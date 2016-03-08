@@ -23,9 +23,9 @@ public class App
         ((FirmScrutinizer)t).setFileCheckInterval(interval);
         t.start();
         boolean runStatus=true;
+        System.out.println("enter the firm id involved in todays scrutiny. Press 0 to exit");
         while(runStatus){
             int firmId=-1;
-            System.out.println("enter the firm id involved in todays scrutiny. Press 0 to exit");
             if(sc.hasNext())
             {
             	Thread.sleep(sleep);

@@ -20,6 +20,8 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
+import static org.apache.commons.collections4.CollectionUtils.isNotEmpty;
+
 /**
  * @author ramana
  *
@@ -61,36 +63,38 @@ public class FirmScrutinizer extends Thread
 	@Override
 	public void run() {
 		while(true){
-            synchronized (todayScrutinizedFirms) {
-                writeToFile();
-            }
 			try {
 				Thread.sleep(fileCheckInterval);
 			} catch (InterruptedException e) {
 				// Should replace with logger.error
 				e.printStackTrace();
 			}
-		}
+            boolean value1 = checkForTime();
+            boolean value2 = checkForCreate(getFileName());
+            System.out.printf("Values are, checkForTime %b, checkForCreate %b,todayScrutinizedFirms %s", value1, value2, todayScrutinizedFirms);
+            if (value1 && value2 && isNotEmpty(todayScrutinizedFirms)) {
+                writeToFile();
+            }
+        }
 	}
 	private void writeToFile()
 	{
-		LocalDate now=LocalDate.now();
-		String str=String.format("scrutinyFirms_%d%d%d.txt",now.getYear(),now.getMonth().getValue(),now.getDayOfMonth());
-		boolean value1=checkForTime();
-		boolean value2=checkForCreate(str);
 		StringBuilder sb=new StringBuilder();
-        final Set<Firm> firmSet = new LinkedHashSet<>(todayScrutinizedFirms);
+        Set<Firm> firmSet = null;
+        synchronized (todayScrutinizedFirms) {
+            firmSet = new LinkedHashSet<>(todayScrutinizedFirms);
+            todayScrutinizedFirms.removeAll(firmSet);
+        }
         firmSet.stream().forEach(e -> sb.append(e.getFirmId() + "\n"));
 		byte[] data=sb.toString().getBytes();
 		//replace with log.info
-		System.out.printf("Values are, checkForTime %b, checkForCreate %b,todayScrutinizedFirms %s",value1,value2,sb.toString());
-		if(data!=null && value1 && value2)
-		{
-			Path p = Paths.get("/user","finra",str);
-			  try (OutputStream out = new BufferedOutputStream(
+        System.out.printf("Valuefor todayScrutinizedFirms %s", sb.toString());
+        if (data != null && data.length > 0) {
+            Path p = Paths.get("/var", "tmp", "user", "finra", getFileName());
+            try (OutputStream out = new BufferedOutputStream(
 				      Files.newOutputStream(p, CREATE_NEW))) {
 				      out.write(data, 0, data.length);
-                      todayScrutinizedFirms.removeAll(firmSet);
+
 				    } catch (IOException x) {
 				      //replace below with logger
 				    	System.err.println(x);
@@ -98,8 +102,8 @@ public class FirmScrutinizer extends Thread
 		}
 	}
 	private boolean checkForCreate(String fileNameStr) {
-		Path start = Paths.get("/user","finra");
-		int maxDepth = 1;
+        Path start = Paths.get("/var", "tmp", "user", "finra");
+        int maxDepth = 1;
 		Optional<Path> joined = null;
 		try (Stream<Path> stream = Files.find(start, maxDepth, (path, attr) ->
 		        String.valueOf(path).contains(fileNameStr))) {
@@ -118,6 +122,12 @@ public class FirmScrutinizer extends Thread
 		System.out.println("\nCurrent time is "+LocalTime.now().getHour()+":"+LocalTime.now().getMinute());
 		 return result;
 	}
+
+    public static String getFileName() {
+        LocalDate now = LocalDate.now();
+        String fileName = String.format("scrutinyFirms_%d%d%d.txt", now.getYear(), now.getMonth().getValue(), now.getDayOfMonth());
+        return fileName;
+    }
 
     public long getFileCheckInterval() {
         return fileCheckInterval;
