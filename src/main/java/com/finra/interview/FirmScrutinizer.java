@@ -11,7 +11,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
@@ -21,10 +26,18 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
  */
 public class FirmScrutinizer extends Thread
 {
+    private long fileCheckInterval;
+	private final int hour;
+	private int minute;
 	//Using Map here. Could use Hashset that contains firmIds
 	private static final Map<Integer,Firm> dailyScrutinizedFirms=initialize();
-	private final Set<Firm> todayScrutinizedFirms=new LinkedHashSet<>();
+	private final Set<Firm> todayScrutinizedFirms=Collections.synchronizedSet(new LinkedHashSet<>());
 	
+	
+	FirmScrutinizer(int hr, int min){
+		hour=Math.abs(hr)%24;
+		minute=Math.abs(min)%60;
+	}
 	private static Map<Integer,Firm> initialize()
 	{
 		Map<Integer,Firm> temp=new HashMap<>();
@@ -37,7 +50,9 @@ public class FirmScrutinizer extends Thread
 	{
 		//Check if not exists in the daily map
 		if(!dailyScrutinizedFirms.containsKey(firmId))
-			todayScrutinizedFirms.add(new Firm(firmId));
+            synchronized (todayScrutinizedFirms) {
+                todayScrutinizedFirms.add(new Firm(firmId));
+            }
 	}
 	
 	/* (non-Javadoc)
@@ -46,11 +61,11 @@ public class FirmScrutinizer extends Thread
 	@Override
 	public void run() {
 		while(true){
-            synchronized (this) {
+            synchronized (todayScrutinizedFirms) {
                 writeToFile();
             }
 			try {
-				Thread.sleep(20000);
+				Thread.sleep(fileCheckInterval);
 			} catch (InterruptedException e) {
 				// Should replace with logger.error
 				e.printStackTrace();
@@ -64,7 +79,7 @@ public class FirmScrutinizer extends Thread
 		boolean value1=checkForTime();
 		boolean value2=checkForCreate(str);
 		StringBuilder sb=new StringBuilder();
-        final Set<Firm> firmSet = Collections.synchronizedSet(todayScrutinizedFirms);
+        final Set<Firm> firmSet = new LinkedHashSet<>(todayScrutinizedFirms);
         firmSet.stream().forEach(e -> sb.append(e.getFirmId() + "\n"));
 		byte[] data=sb.toString().getBytes();
 		//replace with log.info
@@ -98,9 +113,17 @@ public class FirmScrutinizer extends Thread
 		return joined!=null && !joined.isPresent(); 
 	}
 	private boolean checkForTime() {
-		boolean result=LocalTime.now().getHour()==0 && LocalTime.now().getMinute()==0;
+		boolean result=LocalTime.now().getHour()>=hour && LocalTime.now().getMinute()>=minute;
 		//replace with log.info
 		System.out.println("\nCurrent time is "+LocalTime.now().getHour()+":"+LocalTime.now().getMinute());
 		 return result;
 	}
+
+    public long getFileCheckInterval() {
+        return fileCheckInterval;
+    }
+
+    public void setFileCheckInterval(final long interval) {
+        this.fileCheckInterval = interval;
+    }
 }
